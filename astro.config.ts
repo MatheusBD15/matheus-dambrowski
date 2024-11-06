@@ -21,7 +21,7 @@ import icon from 'astro-icon'
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://matheus-dambrowski.pages.dev/',
+  site: 'https://matheus-dambrowski.dev',
   integrations: [
     tailwind({
       applyBaseStyles: false,

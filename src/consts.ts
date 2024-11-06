@@ -19,7 +19,7 @@ export const SITE: Site = {
   EMAIL: 'matheusbd15@gmail.com',
   NUM_POSTS_ON_HOMEPAGE: 2,
   POSTS_PER_PAGE: 3,
-  SITEURL: 'https://https://matheus-dambrowski.pages.dev/',
+  SITEURL: 'https://matheus-dambrowski.dev',
 }
 
 export const NAV_LINKS: Link[] = [
