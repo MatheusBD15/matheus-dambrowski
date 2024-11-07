@@ -1,12 +1,10 @@
 ---
 import Breadcrumbs from '@/components/Breadcrumbs.astro'
 import Container from '@/components/Container.astro'
-import ProjectCard from '@/components/ProjectCard.astro'
 import { SITE } from '@/consts'
 import Layout from '@/layouts/Layout.astro'
-import { getCollection } from 'astro:content'
+import Link from '@/components/Link.astro'
 
-const projects = await getCollection('projects')
 ---
 
 <Layout title="About" description={SITE.DESCRIPTION}>
@@ -15,11 +13,48 @@ const projects = await getCollection('projects')
 
     <section>
       <div class="min-w-full">
-        <h1 class="mb-4 text-3xl font-bold">Some more about me</h1>
+        <h1 class="mb-4 text-3xl font-bold">About me</h1>
         <p class="prose prose-neutral mb-8 dark:prose-invert">
           I'm a full-stack software engineer hailing from Brazil, with experience building end to end applications in Elixir,
           NextJs and React. I love everything related to software engineering, be it frontend, backend, databases, devops or game dev.
         </p>
+
+        <h2 class="mb-2 text-2xl font-bold">Book recommendations</h2>
+        <ul class="list-disc list-inside mb-8 prose dark:prose-invert prose-neutral">
+          <li class="mb-2">
+            <Link underline href="https://www.amazon.com/Designing-Data-Intensive-Applications-Reliable-Maintainable/dp/1449373321">Designing Data Intensive Applications</Link>
+          </li>
+          <li class="mb-2">
+            <Link underline href="https://www.amazon.com/Computer-Programming-Volumes-1-4A-Boxed/dp/0321751043">The Art of Computer Programming</Link>
+          </li>
+          <li class="mb-2">
+            <Link underline href="https://www.amazon.com/Concurrent-Data-Processing-Elixir-Applications/dp/1680508199">Concurrent Data Processing in Elixir</Link>
+          </li>
+          <li class="mb-2">
+            <Link underline href="https://learninpublic.org/">The Coding Career Handbook</Link>
+          </li>
+          <li class="mb-2">
+            <Link underline href="https://www.amazon.com/Pragmatic-Programmer-Journeyman-Master/dp/020161622X">The Pragmatic Programmer</Link>
+          </li>
+        </ul>
+
+        <h2 class="mb-2 text-2xl font-bold">Non-career related facts about me</h2>
+        <ul class="list-disc list-inside mb-8 prose dark:prose-invert prose-neutral">
+          <li class="mb-2">
+            I play the electric guitar, mostly metal music like Rhapsody, Angra or Blind Guardian.
+          </li>
+          <li class="mb-2">
+            I love reading fantasy and science fiction, my favorite series is <Link underline href="https://www.amazon.com.br/Wheel-Time-Box-Set-Dragon/dp/0356518434/">The Wheel of Time</Link>
+            and my favorite author is <Link underline href="https://www.brandonsanderson.com/">Brandon Sanderson.</Link>
+          </li>
+          <li class="mb-2">
+            My favorite game of all time is <Link underline href="https://store.steampowered.com/app/1245620/ELDEN_RING/">Elden Ring</Link>.
+          </li>
+          <li class="mb-2">
+            I fight Brazilian Jiu Jitsu.
+          </li>
+        </ul>
+
 
         <!-- <h2 class="mb-4 text-2xl font-semibold">Our Projects</h2>
         <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
