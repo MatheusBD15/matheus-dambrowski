@@ -1,0 +1,185 @@
+---
+title: 'Implementing a strict Content Security Policy in NextJs'
+description: 'What is, and how to implement, a strict Content Security Policy in NextJs'
+date: 2024-11-16
+tags: ['nextJs', 'frontend']
+---
+
+## What is a strict Content Security Policy?
+
+A Content Security Policy(CSP) is a layer of security that can be added to websites via configuring a
+`Content-Security-Policy` HTTP header. It helps to mitigate [Cross Site Scripting (XSS)](https://owasp.org/www-community/attacks/xss/).
+Usually, CSPs are configured using an allowlist method, which can be [bypassed in most configurations](https://research.google/pubs/csp-is-dead-long-live-csp-on-the-insecurity-of-whitelists-and-the-future-of-content-security-policy/).
+
+A strict CSP doesn't suffer from these vulnerabilities, and is based on nonces (number used once) or hashes, which are generated on the server
+and can't be guessed by malicious users.
+
+## Implementing a strict CSP in NextJs SSR and App Router
+
+For server-side rendered pages, creating a strict CSP with a nonce is very simple. We need to generate random nonce for every request,
+and set it to the  `x-nonce` header. We are using middlewares for this, as the nonce has to be unique for every request. Note, that for the `script-src`
+directive, we also set the policy as `strict-dynamic`, this is essential for blocking scripts and styles that don't have the nonce.
+
+This code is copied straight from the [official nextJs documentation](https://nextjs.org/docs/app/building-your-application/configuring/content-security-policy#nonces).
+
+```js title="app/middleware.ts" caption="Implementing a nonce based CSP with NextJs middleware"
+import { NextRequest, NextResponse } from "next/server";
+
+export function middleware(request: NextRequest) {
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const cspHeader = `
+      default-src 'self';
+      script-src 'self' 'nonce-${nonce}' 'strict-dynamic';
+      style-src 'self' 'nonce-${nonce}';
+      img-src 'self' blob: data:;
+      font-src 'self';
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self';
+      frame-ancestors 'none';
+      upgrade-insecure-requests;
+  `;
+  // Replace newline characters and spaces
+  const contentSecurityPolicyHeaderValue = cspHeader
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+
+  requestHeaders.set(
+    "Content-Security-Policy",
+    contentSecurityPolicyHeaderValue
+  );
+
+  const response = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+  response.headers.set(
+    "Content-Security-Policy",
+    contentSecurityPolicyHeaderValue
+  );
+
+  return response;
+}
+```
+
+We can also access the nonce from a server component, by reading the headers:
+
+```js title="app/page.tsx"
+import { headers } from 'next/headers'
+import Script from 'next/script'
+ 
+export default async function Page() {
+  const nonce = (await headers()).get('x-nonce')
+ 
+  return (
+    <Script
+      src="https://my.custom.script-src"
+      strategy="afterInteractive"
+      nonce={nonce}
+    />
+  )
+}
+```
+
+## Implementing a strict CSP in statically rendered pages (SSG)
+
+There is a possibility that server-side rendering does not fulfill the performance requirements of the app, and we still need to set a
+strict CSP. In this case, we need to create a unique hash of every inline script that is added to the app, and add it to the CSP. So, a malicious attacker
+can't inject new scripts, as their hash won't match the hashes on the CSP.
+
+This is extremely non-trivial, but thankfully, there is an npm package which comes to the rescue: [@next-safe/middleware](https://www.npmjs.com/package/@next-safe/middleware).
+It will work out of the box for every strict CSP situation, be it SSR (which will add a nonce) or SSG (which will use hashes). Additionaly, it will also 
+work for pages that make use of ISR. It will also provide sensible defaults for CSP and other security headers.
+
+This method will only work on apps using the Pages router, as with App Router it's hard to
+distinguish what's SSG and what's SSR.
+
+### Setting up
+
+The example configuration below is adapted from the [@next-safe/middleware documentation](https://next-safe-middleware.vercel.app/guides/strict-csp-configuration).
+First,Install the package using NPM: `npm i @next-safe/middleware`.
+
+Set up the custom middleware:
+```js title="middleware.ts" caption="Setting up the custom middleware"
+import {
+  chainMatch,
+  isPageRequest,
+  csp,
+  strictDynamic,
+  strictInlineStyles,
+} from "@next-safe/middleware";
+
+// we can also provide configuration objects to all the function calls
+const securityMiddleware = [csp(), strictDynamic(), strictInlineStyles()];
+
+// isPageRequest will make it only match on requests that are for pages, ignoring assets and api calls
+export default chainMatch(isPageRequest)(...securityMiddleware);
+```
+
+Configure `pages/_document.tsx` to use the custom components with CSP data:
+
+```js title="pages/_document.tsx" caption="Configuring _document.tsx"
+import {
+  getCspInitialProps,
+  provideComponents,
+} from "@next-safe/middleware/dist/document";
+import Document, { DocumentContext, Html, Main } from "next/document";
+
+export default class MyDocument extends Document {
+  static async getInitialProps(ctx: DocumentContext) {
+    const initialProps = await getCspInitialProps({ ctx });
+    return initialProps;
+  }
+
+  render() {
+    const { Head, NextScript } = provideComponents(this.props);
+    return (
+      <Html>
+        <Head />
+        <body>
+          <Main />
+          <NextScript />
+        </body>
+      </Html>
+    );
+  }
+}
+```
+
+### Usage with GetServerSideProps
+
+For every page that uses GetServerSideProps, we also need to use a custom function wrapper which will inject csp data:
+
+```js title="pages/ssr/index.tsx" caption="Usage with SSR"
+import { gsspWithNonce } from "@next-safe/middleware/dist/document";
+import { GetServerSideProps, InferGetServerSidePropsType } from "next";
+
+// wrap data fetching with gsspWithNonce
+// to generate a nonce for CSP
+export const getServerSideProps = gsspWithNonce(async () => {
+  return { props: { message: "Hi, from getServerSideProps" } };
+}) satisfies GetServerSideProps<{
+  message: string;
+}>;
+
+// the generated nonce also gets injected into page props
+const Page = ({
+  message,
+  nonce,
+}: InferGetServerSidePropsType<typeof getServerSideProps>) => (
+  <h1>{`${message}. Nonce ${nonce}`}</h1>
+);
+
+export default Page;
+```
+
+Now your app will work automatically with both SSG and SSR and properly secure CSP headers.
+
+
+## Further reading
+- [@next-safe/middleware documentation](https://next-safe-middleware.vercel.app/guides/strict-csp-configuration)
+- [Web.dev article on a strict CSP](https://web.dev/articles/strict-csp)
