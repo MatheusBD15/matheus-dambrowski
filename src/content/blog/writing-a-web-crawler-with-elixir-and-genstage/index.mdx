@@ -1,0 +1,109 @@
+---
+title: 'Building a web crawler with elixir and GenStage'
+description: 'How to write data processing pipelines with GenStage'
+date: 2024-12-30
+tags: ['elixir', 'backend']
+---
+
+## What we will build
+
+This article we will build a rudimentary web crawler, which is a service that will 'crawl' the web via the following process:
+
+1. Download the HTML of an initial URL.
+2. Parse the HTML to find all anchor elements, which link to other pages.
+3. Download the HTML of these other pages.
+4. Repeat indefinitely.
+
+Elixir is a great tool for this, as this project is very I/O intensive and not CPU intensive, so we can make great use of
+Elixir's async [Task](https://hexdocs.pm/elixir/1.12/Task.html) module for optimizing the performance, as doing this sequentally will be extremely slow.
+Later, we wil see limitations with just using async tasks and how we can solve this.
+
+## Setting up the project
+
+First, set up the project with `mix phx.new crawler` and set up the dependencies:
+
+```elixir title="crawler/mix.exs"
+def deps do
+  {:gen_stage, "~> 1.2.1"}
+  {:floki, ">= 0.30.0"},
+  {:req, "~> 0.5.0"},
+  {:html5ever, "~> 0.15.0"}
+end
+```
+
+`Floki` and `html5ever` will be used for parsing HTML, `req` for making http requests and `gen_stage` for handling concurrency, which we will look into later.
+
+## The naive implementation
+
+The core business logic will remain the same accross both versions of the app, as we want to separate process logic and business logic.
+It will look something like:
+
+```elixir title="crawler/lib/crawler.ex"
+defmodule Crawler do
+  require Logger
+
+  def crawl(url) do
+    # download the html
+    result_html = Req.get!(url).body
+
+    # parse the document with floki
+    {:ok, document} = Floki.parse_document(result_html)
+
+    # find all anchor elements
+    anchors = Floki.find(document, "a")
+
+    # get the document title
+    title = document |> Floki.find("title") |> Floki.text()
+    Logger.info("Scraped page with title #{title}")
+
+    # get the href of all anchors
+    all_hrefs =
+      Enum.map(anchors, fn anchor -> Enum.at(Floki.attribute(anchor, "href"), 0) end)
+
+    new_urls =
+      all_hrefs
+      # filter empty hrefs
+      |> Enum.filter(fn path -> not is_nil(path) end)
+      # filter anchors on the same page
+      |> Enum.filter(fn path -> not String.contains?(path, "#") end)
+      # path might be a full url or not, if not, we will append it to the host
+      |> Enum.map(fn path ->
+        case String.contains?(path, "https://") do
+          true -> path
+          false -> url <> String.slice(path, 1..-1//1)
+        end
+      end)
+      # remove duplicates
+      |> Enum.uniq()
+
+    # return the new urls, to be scraped
+    new_urls
+  end
+end
+```
+
+Now, using the Task module, we can make the process of crawling an url asynchronous, and make it able to spawn more crawl requests,
+so we can crawl the web indefinitely. Please don't run this function, as it has a serious problem.
+
+```elixir title="crawler/lib/crawler.ex"
+def crawl_all_urls(urls) when is_list(urls) do
+  results = 
+    urls
+    # for each url, create an async task which crawls it
+    |> Enum.map(fn url -> 
+      Task.async(fn -> 
+        crawl_url(url) end)
+      end
+      )
+    # await all crawl requests
+    |> Task.await_many()
+
+  # now, crawl all of the urls in the responses
+  results
+  |> Enum.each(
+    fn result ->
+      # for each list of urls, request to crawl them again
+      crawl_all_urls(result)
+  )
+end
+```
