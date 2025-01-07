@@ -285,8 +285,9 @@ Run the code with `mix phx.server` and see that all is working correctly:
 
 This basically amounts to using the right tool for the right job. Simply using GenStage is much simpler
 than adding another piece of infrastructure to your project. GenStage is very performant and lets us
-avoid making more network calls, but specialized message queues are still much faster and robust. Message
-queues also allow more versatility, like using different programming languages, dead letter queue strategies
+avoid making more network calls, but specialized message queues are still much faster and robust.
+
+Message queues also allow more versatility, like using different programming languages, dead letter queue strategies
 and communicating with various differente services.
 
 If we still want to make use of OTP and BEAM, the [Broadway](https://hexdocs.pm/broadway/Broadway.html) library is the way to go for consuming numerous types
