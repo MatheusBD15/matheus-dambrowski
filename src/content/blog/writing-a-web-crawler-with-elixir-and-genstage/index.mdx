@@ -154,6 +154,7 @@ defmodule Crawler.PageProducer do
   require Logger
 
   # this url can be anything at all
+  # we are starting with the minecraft wiki
   @initial_url "https://minecraft.wiki/"
 
   def start_link(_args) do
@@ -222,6 +223,7 @@ defmodule Crawler.PageConsumerSupervisor do
 
     # subscribe to the page producer
     # max_demand can be used to limit concurrent consumer processes
+    # here we are configuring only 2 concurrent processes
     opts = [
       strategy: :one_for_one,
       subscribe_to: [
@@ -252,7 +254,7 @@ defmodule Crawler.PageConsumer do
 end
 ```
 
-## Wrapping up
+## Running the project
 
 Now we just need to register the stages in our `application.ex` file:
 
@@ -278,3 +280,25 @@ Run the code with `mix phx.server` and see that all is working correctly:
 [info] Scraped page with title Minecraft Wiki:Community portal – Minecraft Wiki
 [info] PageConsumer received "https://minecraft.wiki/w/Minecraft_Wiki:Admin_noticeboard"
 ```
+
+## But why not RabbitMq, SQS and co.?
+
+This basically amounts to using the right tool for the right job. Simply using GenStage is much simpler
+than adding another piece of infrastructure to your project. GenStage is very performant and lets us
+avoid making more network calls, but specialized message queues are still much faster and robust. Message
+queues also allow more versatility, like using different programming languages, dead letter queue strategies
+and communicating with various differente services.
+
+If we still want to make use of OTP and BEAM, the [Broadway](https://hexdocs.pm/broadway/Broadway.html) library is the way to go for consuming numerous types
+of message queues. At a project I worked at, which was a web scraper written in Elixir, we started with GenStage
+and the architecture naturally evolved to use RabbitMq and Broadway in a microsservices manner.
+
+## Wrapping up
+
+All the source code for this guide is available at [this github repo](https://github.com/MatheusBD15/exSearch).
+I initially had the idea for this project without using GenStage, but I realized that it was the perfect fit for it,
+and I plan to continue it, writing about actually making it a search engine, proxy networks and the PageRank algorithm.
+
+Most of the tutorial and the code is inspired by Svilen's Gospodinov amazing [Concurrent Data Processing in Elixir](https://pragprog.com/titles/sgdpelixir/concurrent-data-processing-in-elixir/) book,
+as this is where I initially learnt about these concepts. I really urge you to go buy the book and read it, it's easily one of the best
+backend books I've read, and it goes really in depth about these concepts.
