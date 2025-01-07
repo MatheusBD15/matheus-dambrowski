@@ -16,7 +16,7 @@ This article we will build a rudimentary web crawler, which is a service that wi
 
 Elixir is a great tool for this, as this project is very I/O intensive and not CPU intensive, so we can make great use of
 Elixir's async [Task](https://hexdocs.pm/elixir/1.12/Task.html) module for optimizing the performance, as doing this sequentally will be extremely slow.
-Later, we wil see limitations with just using async tasks and how we can solve this.
+Later, we wil see limitations with just using async tasks and how we can solve them.
 
 ## Setting up the project
 
@@ -106,4 +106,175 @@ def crawl_all_urls(urls) when is_list(urls) do
       crawl_all_urls(result)
   )
 end
+```
+
+Initially, this looks quite good. However, we have a finite amount of memory and CPU available, and this method
+will exponentially create more tasks, which will, at a certain point, cause the machine to crash or go unresponsive.
+This is because crawling a page might generate X more pages to be crawled, each of which will generate X more tasks,
+so this will grow exponentially.
+
+## Grasping back-pressure
+
+Back-pressure is a concept used in the context of data processing, which means to slow down or stop the flow of
+data. It can be used in our toy web scraper to limit the amount of work that can be done concurrently, for example,
+make it so we can only scrape 10 pages at once, and the rest will be handled at a later moment. 
+
+The elixir library [GenStage](https://hexdocs.pm/gen_stage/GenStage.html) does exactly that, and is the tool we will use to solve this problem.
+
+## Exploring GenStage
+
+GenStage is an Elixir behaviour for exchanging events with back-pressure between Elixir processes, called `stages`.
+Stages are the basic building blocks for creating data processing pipelines.
+
+Stages receive events and do something with them, and can also send events to the next stage in the pipeline.
+
+![Stages](./stages.png)
+
+When a stage sends data, it acts as a `producer`. When it receives data, it acts as a `consumer`.
+A stage may be both a producer and a cosumer at the same time, acting as a `consumer producer`.
+
+Quoting the [GenStage documentation](https://hexdocs.pm/gen_stage/GenStage.html#module-stage-types):
+> To start the flow of events, we always subscribe consumers to producers. 
+Once the communication channel between consumers and producers is established, consumers will ask producers for events.
+We typically say that the consumer is sending demand upstream. Once demand arrives, the producer will emit events, never emitting more events than the consumer asked for. 
+This provides a back-pressure mechanism.
+
+## Building our pipeline
+
+We will have a `producer` which is responsible for producing URLs to be scraped, and a `consumer`
+which will scrape the URLs and parse the HTML.
+
+![Scraper-stages](./scraper-stages.png)
+
+Our producer will look something like this:
+
+```elixir title="crawler/lib/crawler/page_producer.ex"
+defmodule Crawler.PageProducer do
+  use GenStage
+  require Logger
+
+  # this url can be anything at all
+  @initial_url "https://minecraft.wiki/"
+
+  def start_link(_args) do
+    initial_state = []
+    GenStage.start_link(__MODULE__, initial_state, name: __MODULE__)
+  end
+
+  def init(initial_state) do
+    Logger.info("PageProducer init")
+
+    # kickstart the search with an initial url
+    __MODULE__.scrape_urls([@initial_url])
+
+    # specify that the stage is a producer
+    {:producer, initial_state}
+  end
+
+  # handle_demand is invoked when the consumer asks for events
+  def handle_demand(demand, state) do
+    Logger.info("Received demand for #{demand} pages")
+    events = []
+    {:noreply, events, state}
+  end
+
+  # this function will allow external functions to call the producer and issue
+  # requests for urls to be crawled
+  def scrape_urls(urls) when is_list(urls) do
+    GenStage.cast(__MODULE__, {:urls, urls})
+  end
+
+  def handle_cast({:urls, urls}, state) do
+    {:noreply, urls, state}
+  end
+end
+```
+
+We can see that the producer code looks very similar to a [GenServer](https://hexdocs.pm/elixir/1.12/GenServer.html), 
+with only a few differences.
+
+For our consumer, we won't be using the default Consumer behaviour from GenStage. We will instead
+use a [ConsumerSupervisor](https://hexdocs.pm/gen_stage/ConsumerSupervisor.html), which will handle concurrency
+by starting a new child process per event. This allows greater concurrency and performance control.
+
+![Consumer Supervisor](./consumer-supervisor.png)
+
+```elixir title="crawler/lib/crawler/page_consumer_supervisor.ex"
+defmodule Crawler.PageConsumerSupervisor do
+  use ConsumerSupervisor
+  require Logger
+
+  def start_link(_args) do
+    ConsumerSupervisor.start_link(__MODULE__, :ok)
+  end
+
+  def init(:ok) do
+    Logger.info("PageConsumerSupervisor init")
+
+    # start the actual page consumer as children
+    children = [
+      %{
+        id: Crawler.PageConsumer,
+        start: {Crawler.PageConsumer, :start_link, []},
+        restart: :transient
+      }
+    ]
+
+    # subscribe to the page producer
+    # max_demand can be used to limit concurrent consumer processes
+    opts = [
+      strategy: :one_for_one,
+      subscribe_to: [
+        {ExSearch.PageProducer, max_demand: 2}
+      ]
+    ]
+
+    ConsumerSupervisor.init(children, opts)
+  end
+end
+```
+
+Now, our actual consumer will be very small, as it only needs to implement a `start_link/1`
+callback which will receive the event.
+
+```elixir title="crawler/lib/crawler/page_consumer.ex"
+defmodule Crawler.PageConsumer do
+  require Logger
+
+  def start_link(url) do
+    Logger.info("PageConsumer received #{inspect(url)}")
+
+    # do the crawling work inside a task
+    Task.start_link(fn ->
+      Crawler.Crawler.work(url)
+    end)
+  end
+end
+```
+
+## Wrapping up
+
+Now we just need to register the stages in our `application.ex` file:
+
+```elixir title="crawler/lib/application.ex"
+  def start(_type, _args) do
+    children = [
+      Crawler.PageProducer,
+      Crawler.PageConsumerSupervisor
+    ]
+  end
+```
+
+Run the code with `mix phx.server` and see that all is working correctly:
+
+```bash
+[info] PageProducer init
+[info] PageConsumerSupervisor init
+[info] Received demand for 1 pages
+[info] PageConsumer received "https://minecraft.wiki/"
+[info] Scraped page with title The Minecraft Wiki
+[info] PageConsumer received "https://minecraft.wiki/w/Minecraft_Wiki:Community_portal"
+[info] PageConsumer received "https://minecraft.wiki/w/Minecraft_Wiki:Forum"
+[info] Scraped page with title Minecraft Wiki:Community portal – Minecraft Wiki
+[info] PageConsumer received "https://minecraft.wiki/w/Minecraft_Wiki:Admin_noticeboard"
 ```
