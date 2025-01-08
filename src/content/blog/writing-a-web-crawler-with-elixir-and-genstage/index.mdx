@@ -168,9 +168,9 @@ defmodule Crawler.PageProducer do
   end
 
   # handle_demand is invoked when the consumer asks for events
-  def handle_demand(num_pages, state) do
-    Logger.info("Received demand for #{num_pages} urls")
+  def handle_demand(_demand, state) do
 
+    # start with an empty state, as we won´t be using this function to handle demand
     {:noreply, [], state}
   end
 
@@ -260,7 +260,6 @@ Now we just need to register the stages in our `application.ex` file:
 Run the code with `mix phx.server` and see that all is working correctly:
 
 ```bash
-[info] Received demand for 1 pages
 [info] PageConsumer received url "https://minecraft.wiki/"
 [info] Scraped page with title The Minecraft Wiki
 [info] PageConsumer received url "https://minecraft.wiki/w/Minecraft_Wiki:Community_portal"
