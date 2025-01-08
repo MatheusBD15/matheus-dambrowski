@@ -7,7 +7,7 @@ tags: ['elixir', 'backend']
 
 ## What we will build
 
-This article we will build a rudimentary web crawler, which is a service that will 'crawl' the web via the following process:
+In this article we will build a rudimentary web crawler, which is a service that will 'crawl' the web via the following process:
 
 1. Download the HTML of an initial URL.
 2. Parse the HTML to find all anchor elements, which link to other pages.
@@ -120,8 +120,7 @@ Back-pressure is a concept used in the context of data processing, which means t
 data. It can be used in our toy web scraper to limit the amount of work that can be done concurrently, for example,
 make it so we can only scrape 10 pages at once, and the rest will be handled at a later moment. 
 
-GenStage is an Elixir behaviour for exchanging events with back-pressure between Elixir processes, called `stages`.
-
+GenStage is an Elixir behaviour for exchanging events with back-pressure between Elixir processes, called **stages**.
 Stages receive events and do something with them, and can also send events to the next stage in the pipeline.
 
 ![Stages](./stages.png)
@@ -292,5 +291,5 @@ I initially had the idea for this project without using GenStage, but I realized
 and I plan to continue it, writing about actually making it a search engine, proxy networks and the PageRank algorithm.
 
 Most of the tutorial and the code is inspired by Svilen's Gospodinov amazing [Concurrent Data Processing in Elixir](https://pragprog.com/titles/sgdpelixir/concurrent-data-processing-in-elixir/) book,
-as this is where I initially learnt about these concepts. I really urge you to go buy the book and read it, it's easily one of the best
-backend books I've read, and it goes really in depth about these concepts.
+as this is where I initially learnt about these concepts. 
+Also, props to the [GenStage documentation](https://hexdocs.pm/gen_stage/GenStage.html) for a lot of relevant code snippets
