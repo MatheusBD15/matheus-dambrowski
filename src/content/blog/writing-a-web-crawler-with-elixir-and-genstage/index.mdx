@@ -31,7 +31,8 @@ def deps do
 end
 ```
 
-`Floki` and `html5ever` will be used for parsing HTML, `req` for making http requests and `gen_stage` for handling concurrency, which we will look into later.
+[Floki](https://github.com/philss/floki) and [html5ever](https://github.com/servo/html5ever) will be used for parsing HTML, [req](https://hexdocs.pm/req/Req.html) 
+for making http requests and [GenStage](https://hexdocs.pm/gen_stage/GenStage.html) for handling concurrency, which we will look into later.
 
 ## The naive implementation
 
@@ -125,10 +126,11 @@ Stages receive events and do something with them, and can also send events to th
 
 ![Stages](./stages.png)
 
-When a stage sends data, it acts as a `producer`. When it receives data, it acts as a `consumer`.
-A stage may be both a producer and a cosumer at the same time, acting as a `consumer producer`.
-
 Quoting the [GenStage documentation](https://hexdocs.pm/gen_stage/GenStage.html#module-stage-types):
+
+> When a stage sends data, it acts as a **producer**. When it receives data, it acts as a **consumer**.
+A stage may be both a **producer** and a **consumer** at the same time, acting as a **consumer producer**.
+
 > To start the flow of events, we always subscribe consumers to producers. 
 Once the communication channel between consumers and producers is established, consumers will ask producers for events.
 We typically say that the consumer is sending demand upstream. Once demand arrives, the producer will emit events, never emitting more events than the consumer asked for. 
@@ -136,7 +138,7 @@ This provides a back-pressure mechanism.
 
 ## Building our pipeline
 
-We will have a `producer` which is responsible for producing URLs to be scraped, and a `consumer`
+We will have a **producer** which is responsible for producing URLs to be scraped, and a **consumer**
 which will scrape the URLs and parse the HTML.
 
 ![Scraper-stages](./scraper-stages.png)
@@ -271,7 +273,12 @@ Run the code with `mix phx.server` and see that all is working correctly:
 
 This basically amounts to using the right tool for the right job. Simply using GenStage is much simpler
 than adding another piece of infrastructure to your project. GenStage is very performant and lets us
-avoid making more network calls, but specialized message queues are still much faster and robust.
+avoid making more network calls, but specialized message queues are still much faster and robust. 
+
+Specialized message queues act as persistent storage for events, making the system more resilient to failures and crashes,
+while GenStage will save events in an [in-memory buffer](https://hexdocs.pm/gen_stage/GenStage.html#module-buffering), 
+but this buffer has limited size and can cause events to be dropped in case demand is too high. While we can set the buffer size to be infinite,
+this can cause out-of-memory errors and memory usage spikes.
 
 Message queues also allow more versatility, like using different programming languages, dead letter queue strategies
 and communicating with various differente services.
