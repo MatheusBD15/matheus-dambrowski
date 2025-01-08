@@ -119,8 +119,6 @@ Back-pressure is a concept used in the context of data processing, which means t
 data. It can be used in our toy web scraper to limit the amount of work that can be done concurrently, for example,
 make it so we can only scrape 10 pages at once, and the rest will be handled at a later moment. 
 
-The elixir library [GenStage](https://hexdocs.pm/gen_stage/GenStage.html) does exactly that, and is the tool we will use to solve this problem.
-
 GenStage is an Elixir behaviour for exchanging events with back-pressure between Elixir processes, called `stages`.
 
 Stages receive events and do something with them, and can also send events to the next stage in the pipeline.
