@@ -169,7 +169,6 @@ defmodule Crawler.PageProducer do
 
   # handle_demand is invoked when the consumer asks for events
   def handle_demand(_demand, state) do
-
     # start with an empty state, as we won´t be using this function to handle demand
     {:noreply, [], state}
   end
