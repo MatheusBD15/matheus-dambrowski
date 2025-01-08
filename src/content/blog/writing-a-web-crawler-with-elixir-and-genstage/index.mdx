@@ -113,7 +113,7 @@ will exponentially create more tasks, which will, at a certain point, cause the 
 This is because crawling a page might generate X more pages to be crawled, each of which will generate X more tasks,
 so this will grow exponentially.
 
-## Grasping back-pressure
+## Back-pressure and GenStage
 
 Back-pressure is a concept used in the context of data processing, which means to slow down or stop the flow of
 data. It can be used in our toy web scraper to limit the amount of work that can be done concurrently, for example,
@@ -121,10 +121,7 @@ make it so we can only scrape 10 pages at once, and the rest will be handled at 
 
 The elixir library [GenStage](https://hexdocs.pm/gen_stage/GenStage.html) does exactly that, and is the tool we will use to solve this problem.
 
-## Exploring GenStage
-
 GenStage is an Elixir behaviour for exchanging events with back-pressure between Elixir processes, called `stages`.
-Stages are the basic building blocks for creating data processing pipelines.
 
 Stages receive events and do something with them, and can also send events to the next stage in the pipeline.
 
@@ -163,8 +160,6 @@ defmodule Crawler.PageProducer do
   end
 
   def init(initial_state) do
-    Logger.info("PageProducer init")
-
     # kickstart the search with an initial url
     __MODULE__.scrape_urls([@initial_url])
 
@@ -173,15 +168,15 @@ defmodule Crawler.PageProducer do
   end
 
   # handle_demand is invoked when the consumer asks for events
-  def handle_demand(demand, state) do
-    Logger.info("Received demand for #{demand} pages")
-    events = []
-    {:noreply, events, state}
+  def handle_demand(num_pages, state) do
+    Logger.info("Received demand for #{num_pages} urls")
+
+    {:noreply, [], state}
   end
 
   # this function will allow external functions to call the producer and issue
   # requests for urls to be crawled
-  def scrape_urls(urls) when is_list(urls) do
+  def scrape_urls(urls) do
     GenStage.cast(__MODULE__, {:urls, urls})
   end
 
@@ -190,9 +185,6 @@ defmodule Crawler.PageProducer do
   end
 end
 ```
-
-We can see that the producer code looks very similar to a [GenServer](https://hexdocs.pm/elixir/1.12/GenServer.html), 
-with only a few differences.
 
 For our consumer, we won't be using the default Consumer behaviour from GenStage. We will instead
 use a [ConsumerSupervisor](https://hexdocs.pm/gen_stage/ConsumerSupervisor.html), which will handle concurrency
@@ -210,8 +202,6 @@ defmodule Crawler.PageConsumerSupervisor do
   end
 
   def init(:ok) do
-    Logger.info("PageConsumerSupervisor init")
-
     # start the actual page consumer as children
     children = [
       %{
@@ -244,7 +234,7 @@ defmodule Crawler.PageConsumer do
   require Logger
 
   def start_link(url) do
-    Logger.info("PageConsumer received #{inspect(url)}")
+    Logger.info("PageConsumer received url #{inspect(url)}")
 
     # do the crawling work inside a task
     Task.start_link(fn ->
@@ -270,15 +260,13 @@ Now we just need to register the stages in our `application.ex` file:
 Run the code with `mix phx.server` and see that all is working correctly:
 
 ```bash
-[info] PageProducer init
-[info] PageConsumerSupervisor init
 [info] Received demand for 1 pages
-[info] PageConsumer received "https://minecraft.wiki/"
+[info] PageConsumer received url "https://minecraft.wiki/"
 [info] Scraped page with title The Minecraft Wiki
-[info] PageConsumer received "https://minecraft.wiki/w/Minecraft_Wiki:Community_portal"
-[info] PageConsumer received "https://minecraft.wiki/w/Minecraft_Wiki:Forum"
+[info] PageConsumer received url "https://minecraft.wiki/w/Minecraft_Wiki:Community_portal"
+[info] PageConsumer received url "https://minecraft.wiki/w/Minecraft_Wiki:Forum"
 [info] Scraped page with title Minecraft Wiki:Community portal – Minecraft Wiki
-[info] PageConsumer received "https://minecraft.wiki/w/Minecraft_Wiki:Admin_noticeboard"
+[info] PageConsumer received url "https://minecraft.wiki/w/Minecraft_Wiki:Admin_noticeboard"
 ```
 
 ## But why not RabbitMq, SQS and co.?
